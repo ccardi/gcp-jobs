@@ -1,0 +1,53 @@
+main:
+    params: [event]
+    steps:
+        - init:
+            assign:
+                - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+                - service_account: 486742359899-compute@developer.gserviceaccount.com
+                - job_name: test #${event.job_name_prefix}
+                - job_location: europe-west1
+                - container_name: europe-west1-docker.pkg.dev/pod-fr-retail/demok8/demo_k8_jobs_basic@sha256:dc6968eddb9cccf274cbed4aa371e534c615c8a8573df37bccedb2f68b834d58
+                - cpu: 1000m
+                - memory: 512Mi
+        - create-uuid:
+            call: uuid.generate
+            result: uuid
+        - create-job: 
+            call: googleapis.run.v1.namespaces.jobs.create
+            args: #https://cloud.google.com/workflows/docs/reference/googleapis/run/v1/namespaces.jobs/create
+                parent: ${"namespaces/"+project_id}
+                location: ${job_location}
+                body:
+                    apiVersion: run.googleapis.com/v1
+                    kind: Job
+                    metadata:
+                        name: ${job_name+"-"+uuid}
+                    spec:
+                        template:
+                            spec:
+                                taskCount: 1
+                                template:
+                                    spec:
+                                        containers: 
+                                            - image: ${container_name}
+                                              env: [{ "name": "DEMO_GREETING","value": "Hello from the environment"}]
+                                              resources:
+                                                    limits:
+                                                        cpu: ${cpu}
+                                                        memory: ${memory}
+                                        maxRetries: 3
+                                        timeoutSeconds: '600'
+                                        serviceAccountName: ${service_account}
+            result: job
+        - run-job:
+            call: googleapis.run.v1.namespaces.jobs.run
+            args:
+                name: ${"namespaces/" + project_id + "/jobs/" + job_name + "-" + uuid}
+                location: ${job_location}
+                connector_params:
+                    timeout: 31536000
+                    skip_polling: True
+            result: result
+        - finish:
+            return: ${result}
